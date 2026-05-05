@@ -487,7 +487,7 @@ export function CreateListing() {
       </div>
 
       {/* Submit Button */}
-      <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 safe-area-bottom">
+      <div className="fixed bottom-24 left-0 right-0 z-50 bg-card border-t border-border p-4 safe-area-bottom">
         <div className="max-w-md mx-auto">
           <Button
             size="lg"
