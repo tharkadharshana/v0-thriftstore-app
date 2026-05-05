@@ -1,54 +1,94 @@
 'use client'
 
+import { useState, useEffect, useCallback } from 'react'
 import {
   Smartphone,
   Car,
   Home,
   Shirt,
-  Sofa,
   Dumbbell,
   BookOpen,
-  Gamepad2,
+  Baby,
+  Wrench,
   ChevronRight,
+  Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/lib/store'
-import { categories, mockListings } from '@/lib/mock-data'
 import { useLanguage } from '@/components/providers/language-provider'
+import { createClient } from '@/lib/supabase/client'
+import type { Category } from '@/lib/types'
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  Smartphone,
-  Car,
-  Home,
-  Shirt,
-  Sofa,
-  Dumbbell,
-  BookOpen,
-  Gamepad2,
-}
-
-const categoryColors: Record<string, string> = {
-  electronics: 'from-blue-500/20 to-blue-600/20 text-blue-400',
-  vehicles: 'from-red-500/20 to-red-600/20 text-red-400',
-  property: 'from-emerald-500/20 to-emerald-600/20 text-emerald-400',
-  fashion: 'from-pink-500/20 to-pink-600/20 text-pink-400',
-  home_living: 'from-amber-500/20 to-amber-600/20 text-amber-400',
-  sports: 'from-cyan-500/20 to-cyan-600/20 text-cyan-400',
-  books: 'from-purple-500/20 to-purple-600/20 text-purple-400',
-  toys: 'from-orange-500/20 to-orange-600/20 text-orange-400',
+  smartphone: Smartphone,
+  car: Car,
+  home: Home,
+  shirt: Shirt,
+  dumbbell: Dumbbell,
+  'book-open': BookOpen,
+  baby: Baby,
+  wrench: Wrench,
 }
 
 export function CategoriesScreen() {
   const { navigate, setActiveCategory } = useAppStore()
-  const { t } = useLanguage()
+  const { t, language } = useLanguage()
+  const supabase = createClient()
+  
+  const [categories, setCategories] = useState<Category[]>([])
+  const [listingCounts, setListingCounts] = useState<Record<string, number>>({})
+  const [isLoading, setIsLoading] = useState(true)
 
-  const getCategoryCount = (categoryId: string) => {
-    return mockListings.filter((l) => l.category === categoryId).length
-  }
+  const fetchCategories = useCallback(async () => {
+    setIsLoading(true)
+    
+    const { data: cats } = await supabase.from('categories').select('*').order('name')
+    setCategories((cats || []) as Category[])
+    
+    // Get listing counts for each category
+    if (cats) {
+      const counts: Record<string, number> = {}
+      for (const cat of cats) {
+        const { count } = await supabase
+          .from('listings')
+          .select('*', { count: 'exact', head: true })
+          .eq('category_id', cat.id)
+          .eq('is_active', true)
+          .eq('is_sold', false)
+        counts[cat.id] = count || 0
+      }
+      setListingCounts(counts)
+    }
+    
+    setIsLoading(false)
+  }, [supabase])
+
+  useEffect(() => {
+    fetchCategories()
+  }, [fetchCategories])
 
   const handleCategoryClick = (categoryId: string) => {
     setActiveCategory(categoryId)
     navigate('home')
+  }
+
+  const getCategoryName = (cat: Category) => {
+    if (language === 'sn' && cat.name_si) return cat.name_si
+    if (language === 'tm' && cat.name_ta) return cat.name_ta
+    return cat.name
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col min-h-screen bg-background pb-24">
+        <header className="sticky top-0 z-50 bg-background/95 backdrop-blur-md border-b border-border px-4 py-4 safe-area-top">
+          <h1 className="text-xl font-bold">{t('categories')}</h1>
+        </header>
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-accent" />
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -60,9 +100,8 @@ export function CategoriesScreen() {
 
       <div className="flex-1 px-4 py-4 space-y-3">
         {categories.map((cat) => {
-          const Icon = iconMap[cat.icon]
-          const count = getCategoryCount(cat.id)
-          const colorClass = categoryColors[cat.id] || 'from-gray-500/20 to-gray-600/20 text-gray-400'
+          const Icon = iconMap[cat.icon || ''] || Smartphone
+          const count = listingCounts[cat.id] || 0
           
           return (
             <button
@@ -74,16 +113,14 @@ export function CategoriesScreen() {
               )}
             >
               <div
-                className={cn(
-                  'w-14 h-14 rounded-xl flex items-center justify-center bg-gradient-to-br',
-                  colorClass
-                )}
+                className="w-14 h-14 rounded-xl flex items-center justify-center"
+                style={{ backgroundColor: `${cat.color}20`, color: cat.color || '#888' }}
               >
-                {Icon && <Icon className="w-7 h-7" />}
+                <Icon className="w-7 h-7" />
               </div>
               
               <div className="flex-1 text-left">
-                <h3 className="font-semibold text-foreground">{cat.name}</h3>
+                <h3 className="font-semibold text-foreground">{getCategoryName(cat)}</h3>
                 <p className="text-sm text-muted-foreground">
                   {count} {count === 1 ? 'listing' : 'listings'}
                 </p>

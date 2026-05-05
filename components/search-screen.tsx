@@ -1,35 +1,83 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { Search, ArrowLeft, X, Clock, TrendingUp } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Search, ArrowLeft, X, Clock, TrendingUp, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/lib/store'
-import { mockListings, categories } from '@/lib/mock-data'
 import { useLanguage } from '@/components/providers/language-provider'
 import { ListingCard } from '@/components/listing-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { createClient } from '@/lib/supabase/client'
+import type { Listing, Category } from '@/lib/types'
 
 export function SearchScreen() {
   const { goBack, searchQuery, setSearchQuery, setActiveCategory, navigate } = useAppStore()
   const { t } = useLanguage()
+  const supabase = createClient()
+  
   const [localQuery, setLocalQuery] = useState(searchQuery)
+  const [searchResults, setSearchResults] = useState<Listing[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [recentSearches, setRecentSearches] = useState<string[]>([])
 
-  const recentSearches = ['iPhone 14', 'Honda Vezel', 'MacBook Pro', 'Nike Air Jordan']
-  const trendingSearches = ['PS5', 'iPhone', 'Gold Chain', 'Bike']
+  const trendingSearches = ['iPhone', 'PlayStation', 'Honda', 'Nike', 'Samsung', 'MacBook']
 
-  const searchResults = useMemo(() => {
-    if (!localQuery.trim()) return []
+  const fetchCategories = useCallback(async () => {
+    const { data } = await supabase.from('categories').select('*').order('name').limit(6)
+    setCategories((data || []) as Category[])
+  }, [supabase])
+
+  useEffect(() => {
+    fetchCategories()
+    // Load recent searches from localStorage
+    const saved = localStorage.getItem('dudu-recent-searches')
+    if (saved) {
+      setRecentSearches(JSON.parse(saved))
+    }
+  }, [fetchCategories])
+
+  const performSearch = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([])
+      return
+    }
     
-    const query = localQuery.toLowerCase()
-    return mockListings.filter(
-      (l) =>
-        l.title.toLowerCase().includes(query) ||
-        l.description.toLowerCase().includes(query) ||
-        l.category.toLowerCase().includes(query)
-    )
-  }, [localQuery])
+    setIsSearching(true)
+    
+    const { data } = await supabase
+      .from('listings')
+      .select(`
+        *,
+        seller:profiles!user_id(*),
+        category:categories(*)
+      `)
+      .eq('is_active', true)
+      .eq('is_sold', false)
+      .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
+      .order('is_boosted', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(20)
+    
+    setSearchResults((data || []) as Listing[])
+    setIsSearching(false)
+    
+    // Save to recent searches
+    if (query.trim()) {
+      const updated = [query, ...recentSearches.filter(s => s !== query)].slice(0, 5)
+      setRecentSearches(updated)
+      localStorage.setItem('dudu-recent-searches', JSON.stringify(updated))
+    }
+  }, [supabase, recentSearches])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      performSearch(localQuery)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [localQuery, performSearch])
 
   const handleSearch = (query: string) => {
     setLocalQuery(query)
@@ -39,6 +87,11 @@ export function SearchScreen() {
   const handleCategoryClick = (categoryId: string) => {
     setActiveCategory(categoryId)
     navigate('home')
+  }
+
+  const clearRecentSearches = () => {
+    setRecentSearches([])
+    localStorage.removeItem('dudu-recent-searches')
   }
 
   return (
@@ -77,13 +130,17 @@ export function SearchScreen() {
           // Search Results
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              {searchResults.length} results for &quot;{localQuery}&quot;
+              {isSearching ? 'Searching...' : `${searchResults.length} results for "${localQuery}"`}
             </p>
             
-            {searchResults.length > 0 ? (
+            {isSearching ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-accent" />
+              </div>
+            ) : searchResults.length > 0 ? (
               <div className="grid grid-cols-2 gap-3">
                 {searchResults.map((listing) => (
-                  <ListingCard key={listing.id} listing={listing} />
+                  <ListingCard key={listing.id} listing={listing} onUpdate={() => performSearch(localQuery)} />
                 ))}
               </div>
             ) : (
@@ -103,7 +160,7 @@ export function SearchScreen() {
             <div className="space-y-3">
               <h3 className="font-semibold text-sm">Browse Categories</h3>
               <div className="flex flex-wrap gap-2">
-                {categories.slice(0, 6).map((cat) => (
+                {categories.map((cat) => (
                   <Badge
                     key={cat.id}
                     variant="secondary"
@@ -117,26 +174,31 @@ export function SearchScreen() {
             </div>
 
             {/* Recent Searches */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Recent Searches</h3>
-                <button className="text-xs text-muted-foreground hover:text-foreground">
-                  Clear all
-                </button>
-              </div>
-              <div className="space-y-1">
-                {recentSearches.map((term) => (
-                  <button
-                    key={term}
-                    onClick={() => handleSearch(term)}
-                    className="w-full flex items-center gap-3 py-2.5 px-1 hover:bg-secondary rounded-lg transition-colors"
+            {recentSearches.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-sm">Recent Searches</h3>
+                  <button 
+                    onClick={clearRecentSearches}
+                    className="text-xs text-muted-foreground hover:text-foreground"
                   >
-                    <Clock className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm">{term}</span>
+                    Clear all
                   </button>
-                ))}
+                </div>
+                <div className="space-y-1">
+                  {recentSearches.map((term) => (
+                    <button
+                      key={term}
+                      onClick={() => handleSearch(term)}
+                      className="w-full flex items-center gap-3 py-2.5 px-1 hover:bg-secondary rounded-lg transition-colors"
+                    >
+                      <Clock className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm">{term}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Trending */}
             <div className="space-y-3">

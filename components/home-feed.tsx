@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { Filter, ChevronDown, Sparkles } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Filter, Sparkles, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/lib/store'
-import { mockListings, categories } from '@/lib/mock-data'
 import { useLanguage } from '@/components/providers/language-provider'
 import { CurvedHeader } from '@/components/curved-header'
 import { ListingCard } from '@/components/listing-card'
@@ -20,68 +19,100 @@ import {
 } from '@/components/ui/sheet'
 import { Slider } from '@/components/ui/slider'
 import { Checkbox } from '@/components/ui/checkbox'
+import { createClient } from '@/lib/supabase/client'
+import type { Listing, Category } from '@/lib/types'
 
 type SortOption = 'newest' | 'price_low' | 'price_high' | 'ending_soon'
 type ListingTypeFilter = 'all' | 'buy_now' | 'auction'
 
 export function HomeFeed() {
-  const { activeCategory, setActiveCategory, activeFilter, setActiveFilter } = useAppStore()
+  const { activeCategory, setActiveCategory } = useAppStore()
   const { t } = useLanguage()
+  const supabase = createClient()
+  
+  const [listings, setListings] = useState<Listing[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [sortBy, setSortBy] = useState<SortOption>('newest')
   const [listingType, setListingType] = useState<ListingTypeFilter>('all')
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 50000000])
   const [selectedConditions, setSelectedConditions] = useState<string[]>([])
 
-  // Filter and sort listings
-  const filteredListings = useMemo(() => {
-    let filtered = [...mockListings]
-
-    // Category filter
+  const fetchListings = useCallback(async () => {
+    setIsLoading(true)
+    
+    let query = supabase
+      .from('listings')
+      .select(`
+        *,
+        seller:profiles!user_id(*),
+        category:categories(*)
+      `)
+      .eq('is_active', true)
+      .eq('is_sold', false)
+    
     if (activeCategory) {
-      filtered = filtered.filter((l) => l.category === activeCategory)
+      query = query.eq('category_id', activeCategory)
     }
-
-    // Listing type filter
-    if (listingType !== 'all') {
-      filtered = filtered.filter((l) => l.listingType === listingType)
+    
+    if (listingType === 'buy_now') {
+      query = query.eq('is_auction', false)
+    } else if (listingType === 'auction') {
+      query = query.eq('is_auction', true)
     }
-
-    // Price filter
-    filtered = filtered.filter((l) => {
-      const price = l.currentBid || l.price
-      return price >= priceRange[0] && price <= priceRange[1]
-    })
-
-    // Condition filter
+    
     if (selectedConditions.length > 0) {
-      filtered = filtered.filter((l) => selectedConditions.includes(l.condition))
+      query = query.in('condition', selectedConditions)
     }
-
-    // Sort boosted listings first
-    const boosted = filtered.filter((l) => l.isBoosted)
-    const regular = filtered.filter((l) => !l.isBoosted)
-
-    // Sort within each group
-    const sortFn = (a: typeof filtered[0], b: typeof filtered[0]) => {
-      switch (sortBy) {
-        case 'price_low':
-          return (a.currentBid || a.price) - (b.currentBid || b.price)
-        case 'price_high':
-          return (b.currentBid || b.price) - (a.currentBid || a.price)
-        case 'ending_soon':
-          if (!a.endsAt) return 1
-          if (!b.endsAt) return -1
-          return new Date(a.endsAt).getTime() - new Date(b.endsAt).getTime()
-        default:
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      }
+    
+    query = query.gte('price', priceRange[0]).lte('price', priceRange[1])
+    
+    // Sort by boosted first, then by selected sort
+    query = query.order('is_boosted', { ascending: false })
+    
+    if (sortBy === 'price_low') {
+      query = query.order('price', { ascending: true })
+    } else if (sortBy === 'price_high') {
+      query = query.order('price', { ascending: false })
+    } else if (sortBy === 'ending_soon') {
+      query = query.order('auction_end_time', { ascending: true, nullsFirst: false })
+    } else {
+      query = query.order('created_at', { ascending: false })
     }
+    
+    query = query.limit(50)
+    
+    const { data } = await query
+    
+    // Check saved status
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user && data) {
+      const { data: saved } = await supabase
+        .from('saved_listings')
+        .select('listing_id')
+        .eq('user_id', user.id)
+      
+      const savedIds = new Set(saved?.map(s => s.listing_id) || [])
+      setListings(data.map(l => ({ ...l, is_saved: savedIds.has(l.id) })) as Listing[])
+    } else {
+      setListings((data || []) as Listing[])
+    }
+    
+    setIsLoading(false)
+  }, [supabase, activeCategory, listingType, selectedConditions, priceRange, sortBy])
 
-    boosted.sort(sortFn)
-    regular.sort(sortFn)
+  const fetchCategories = useCallback(async () => {
+    const { data } = await supabase.from('categories').select('*').order('name')
+    setCategories((data || []) as Category[])
+  }, [supabase])
 
-    return [...boosted, ...regular]
-  }, [activeCategory, listingType, priceRange, selectedConditions, sortBy])
+  useEffect(() => {
+    fetchCategories()
+  }, [fetchCategories])
+
+  useEffect(() => {
+    fetchListings()
+  }, [fetchListings])
 
   const conditionOptions = [
     { value: 'new', label: t('condition_new') },
@@ -89,6 +120,9 @@ export function HomeFeed() {
     { value: 'good', label: t('condition_good') },
     { value: 'fair', label: t('condition_fair') },
   ]
+
+  const featuredListings = listings.filter(l => l.boost_level === 'ultra')
+  const regularListings = listings.filter(l => l.boost_level !== 'ultra')
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-24">
@@ -131,7 +165,6 @@ export function HomeFeed() {
       {/* Filter & Sort Bar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border/50">
         <div className="flex items-center gap-2">
-          {/* Listing Type Tabs */}
           <div className="flex items-center bg-secondary rounded-lg p-0.5">
             {(['all', 'buy_now', 'auction'] as const).map((type) => (
               <button
@@ -150,130 +183,138 @@ export function HomeFeed() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Sort Dropdown */}
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-1 text-xs">
-                <Filter className="w-3.5 h-3.5" />
-                {t('filter')}
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="sm" className="gap-1 text-xs">
+              <Filter className="w-3.5 h-3.5" />
+              {t('filter')}
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="bottom" className="rounded-t-3xl">
+            <SheetHeader>
+              <SheetTitle>{t('filter')}</SheetTitle>
+            </SheetHeader>
+            <div className="space-y-6 py-4">
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium">{t('sort')}</h4>
+                <div className="flex flex-wrap gap-2">
+                  {(['newest', 'price_low', 'price_high', 'ending_soon'] as const).map((opt) => (
+                    <Badge
+                      key={opt}
+                      variant={sortBy === opt ? 'default' : 'secondary'}
+                      className={cn(
+                        'cursor-pointer',
+                        sortBy === opt && 'bg-accent text-accent-foreground'
+                      )}
+                      onClick={() => setSortBy(opt)}
+                    >
+                      {t(opt)}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium">{t('price')}</h4>
+                <Slider
+                  value={priceRange}
+                  onValueChange={(v) => setPriceRange(v as [number, number])}
+                  min={0}
+                  max={50000000}
+                  step={100000}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Rs. {(priceRange[0] / 1000000).toFixed(1)}M</span>
+                  <span>Rs. {(priceRange[1] / 1000000).toFixed(1)}M</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium">Condition</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  {conditionOptions.map((opt) => (
+                    <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={selectedConditions.includes(opt.value)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedConditions([...selectedConditions, opt.value])
+                          } else {
+                            setSelectedConditions(selectedConditions.filter((c) => c !== opt.value))
+                          }
+                        }}
+                      />
+                      <span className="text-sm">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <Button
+                className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
+                onClick={() => fetchListings()}
+              >
+                Apply Filters
               </Button>
-            </SheetTrigger>
-            <SheetContent side="bottom" className="rounded-t-3xl">
-              <SheetHeader>
-                <SheetTitle>{t('filter')}</SheetTitle>
-              </SheetHeader>
-              <div className="space-y-6 py-4">
-                {/* Sort Options */}
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium">{t('sort')}</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {(['newest', 'price_low', 'price_high', 'ending_soon'] as const).map((opt) => (
-                      <Badge
-                        key={opt}
-                        variant={sortBy === opt ? 'default' : 'secondary'}
-                        className={cn(
-                          'cursor-pointer',
-                          sortBy === opt && 'bg-accent text-accent-foreground'
-                        )}
-                        onClick={() => setSortBy(opt)}
-                      >
-                        {t(opt)}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
 
-                {/* Price Range */}
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium">{t('price')}</h4>
-                  <Slider
-                    value={priceRange}
-                    onValueChange={(v) => setPriceRange(v as [number, number])}
-                    min={0}
-                    max={50000000}
-                    step={100000}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Rs. {(priceRange[0] / 1000000).toFixed(1)}M</span>
-                    <span>Rs. {(priceRange[1] / 1000000).toFixed(1)}M</span>
-                  </div>
+      {isLoading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-accent" />
+        </div>
+      ) : (
+        <>
+          {/* Featured Section */}
+          {featuredListings.length > 0 && (
+            <div className="px-4 py-3">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="w-4 h-4 text-accent" />
+                <h2 className="text-sm font-semibold">Featured Listings</h2>
+              </div>
+              <ScrollArea className="w-full">
+                <div className="flex gap-3 pb-2">
+                  {featuredListings.map((listing) => (
+                    <div key={listing.id} className="w-[200px] flex-shrink-0">
+                      <ListingCard listing={listing} onUpdate={fetchListings} />
+                    </div>
+                  ))}
                 </div>
+                <ScrollBar orientation="horizontal" />
+              </ScrollArea>
+            </div>
+          )}
 
-                {/* Condition */}
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium">Condition</h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    {conditionOptions.map((opt) => (
-                      <label
-                        key={opt.value}
-                        className="flex items-center gap-2 cursor-pointer"
-                      >
-                        <Checkbox
-                          checked={selectedConditions.includes(opt.value)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setSelectedConditions([...selectedConditions, opt.value])
-                            } else {
-                              setSelectedConditions(
-                                selectedConditions.filter((c) => c !== opt.value)
-                              )
-                            }
-                          }}
-                        />
-                        <span className="text-sm">{opt.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <Button
-                  className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
+          {/* Listings Grid */}
+          <div className="flex-1 px-4 py-3">
+            {regularListings.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3">
+                {regularListings.map((listing) => (
+                  <ListingCard key={listing.id} listing={listing} onUpdate={fetchListings} />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <p className="text-muted-foreground">No listings found</p>
+                <Button 
+                  variant="link" 
+                  className="text-accent"
                   onClick={() => {
-                    // Filters applied automatically
+                    setActiveCategory(null)
+                    setSelectedConditions([])
+                    setPriceRange([0, 50000000])
                   }}
                 >
-                  Apply Filters
+                  Clear filters
                 </Button>
               </div>
-            </SheetContent>
-          </Sheet>
-        </div>
-      </div>
-
-      {/* Featured Section */}
-      {filteredListings.some((l) => l.boostLevel === 'featured') && (
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="w-4 h-4 text-accent" />
-            <h2 className="text-sm font-semibold">Featured Listings</h2>
+            )}
           </div>
-          <ScrollArea className="w-full">
-            <div className="flex gap-3 pb-2">
-              {filteredListings
-                .filter((l) => l.boostLevel === 'featured')
-                .map((listing) => (
-                  <div key={listing.id} className="w-[200px] flex-shrink-0">
-                    <ListingCard listing={listing} />
-                  </div>
-                ))}
-            </div>
-            <ScrollBar orientation="horizontal" />
-          </ScrollArea>
-        </div>
+        </>
       )}
-
-      {/* Listings Grid */}
-      <div className="flex-1 px-4 py-3">
-        <div className="grid grid-cols-2 gap-3">
-          {filteredListings
-            .filter((l) => l.boostLevel !== 'featured')
-            .map((listing) => (
-              <ListingCard key={listing.id} listing={listing} />
-            ))}
-        </div>
-      </div>
     </div>
   )
 }
