@@ -487,26 +487,26 @@ export function CreateListing() {
       </div>
 
       {/* Submit Button */}
-      <div className="fixed bottom-24 left-0 right-0 z-50 bg-card border-t border-border p-4 safe-area-bottom">
+      <div className="fixed bottom-24 left-0 right-0 z-50 bg-card/95 border-t border-border p-4 backdrop-blur-sm safe-area-bottom">
         <div className="max-w-md mx-auto">
           <Button
+            type="button"
             size="lg"
-            className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
+            variant="default"
+            className="w-full"
             onClick={handleSubmit}
             disabled={!title || !category || !price || !condition || isSubmitting}
           >
             {isSubmitting ? (
               <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-            ) : (
-              <Plus className="w-5 h-5 mr-2" />
-            )}
-            Create Listing
-            {boostAfterCreate && selectedBoost && (
-              <span className="ml-2 opacity-70">
-                + {boostPackages.find(p => p.id === selectedBoost)?.coins} coins
-              </span>
-            )}
+            ) : null}
+            {isSubmitting ? 'Creating Listing...' : 'Create Listing'}
           </Button>
+          {boostAfterCreate && selectedBoost && (
+            <p className="mt-2 text-xs text-muted-foreground text-center">
+              Boost selected: +{boostPackages.find((p) => p.id === selectedBoost)?.coins} coins
+            </p>
+          )}
         </div>
       </div>
     </div>
