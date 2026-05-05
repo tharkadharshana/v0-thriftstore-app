@@ -82,15 +82,22 @@ export function HomeFeed() {
     
     query = query.limit(50)
     
-    const { data } = await query
+    const { data, error } = await query
     
+    if (error) {
+      console.error('Failed to fetch listings', error)
+      setListings([])
+      setIsLoading(false)
+      return
+    }
+
     // Check saved status
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user && data) {
+    const { data: userData } = await supabase.auth.getUser()
+    if (userData.user && data) {
       const { data: saved } = await supabase
         .from('saved_listings')
         .select('listing_id')
-        .eq('user_id', user.id)
+        .eq('user_id', userData.user.id)
       
       const savedIds = new Set(saved?.map(s => s.listing_id) || [])
       setListings(data.map(l => ({ ...l, is_saved: savedIds.has(l.id) })) as Listing[])

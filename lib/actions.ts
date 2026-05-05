@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { defaultCategories, isMissingCategoryTableError } from '@/lib/categories'
 import type { Listing, Profile } from './types'
 
 // ============ AUTH ACTIONS ============
@@ -413,6 +414,9 @@ export async function ensureCategoriesSeeded() {
     .limit(1)
 
   if (existingError) {
+    if (isMissingCategoryTableError(existingError)) {
+      return
+    }
     throw existingError
   }
 
@@ -422,6 +426,9 @@ export async function ensureCategoriesSeeded() {
 
   const { error } = await supabase.from('categories').insert(seedCategoriesData)
   if (error) {
+    if (isMissingCategoryTableError(error)) {
+      return
+    }
     throw error
   }
 }
@@ -429,10 +436,17 @@ export async function ensureCategoriesSeeded() {
 export async function getCategories() {
   const supabase = await createClient()
   
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('categories')
     .select('*')
     .order('name')
+
+  if (error) {
+    if (isMissingCategoryTableError(error)) {
+      return defaultCategories
+    }
+    throw error
+  }
   
   return data || []
 }
