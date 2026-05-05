@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { defaultCategories, isMissingCategoryTableError } from '@/lib/categories'
 import type { Listing, Profile } from './types'
 
 // ============ AUTH ACTIONS ============
@@ -394,13 +395,58 @@ export async function getBids(listingId: string) {
 
 // ============ CATEGORIES ============
 
+const seedCategoriesData = [
+  { name: 'Electronics', name_si: 'ඉලෙක්ට්රොනික', name_ta: 'மின்னணு', icon: 'smartphone', color: '#3B82F6' },
+  { name: 'Fashion', name_si: 'විලාසිතා', name_ta: 'ஆடை', icon: 'shirt', color: '#EC4899' },
+  { name: 'Home & Garden', name_si: 'නිවස සහ උද්යාන', name_ta: 'வீடு மற்றும் தோட்டம்', icon: 'home', color: '#10B981' },
+  { name: 'Vehicles', name_si: 'වාහන', name_ta: 'வாகனங்கள்', icon: 'car', color: '#F59E0B' },
+  { name: 'Sports', name_si: 'ක්රීඩා', name_ta: 'விளையாட்டு', icon: 'dumbbell', color: '#8B5CF6' },
+  { name: 'Books', name_si: 'පොත්', name_ta: 'புத்தகங்கள்', icon: 'book-open', color: '#06B6D4' },
+  { name: 'Kids', name_si: 'ළමුන්', name_ta: 'குழந்தைகள்', icon: 'baby', color: '#F97316' },
+  { name: 'Services', name_si: 'සේවා', name_ta: 'சேவைகள்', icon: 'wrench', color: '#64748B' },
+]
+
+export async function ensureCategoriesSeeded() {
+  const supabase = await createClient()
+  const { data: existingCategories, error: existingError } = await supabase
+    .from('categories')
+    .select('id')
+    .limit(1)
+
+  if (existingError) {
+    if (isMissingCategoryTableError(existingError)) {
+      return
+    }
+    throw existingError
+  }
+
+  if (existingCategories && existingCategories.length > 0) {
+    return
+  }
+
+  const { error } = await supabase.from('categories').insert(seedCategoriesData)
+  if (error) {
+    if (isMissingCategoryTableError(error)) {
+      return
+    }
+    throw error
+  }
+}
+
 export async function getCategories() {
   const supabase = await createClient()
   
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('categories')
     .select('*')
     .order('name')
+
+  if (error) {
+    if (isMissingCategoryTableError(error)) {
+      return defaultCategories
+    }
+    throw error
+  }
   
   return data || []
 }

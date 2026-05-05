@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 import { useAppStore } from '@/lib/store'
 import { useLanguage } from '@/components/providers/language-provider'
 import { createClient } from '@/lib/supabase/client'
+import { defaultCategories, isMissingCategoryTableError } from '@/lib/categories'
 import type { Category } from '@/lib/types'
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -42,13 +43,15 @@ export function CategoriesScreen() {
   const fetchCategories = useCallback(async () => {
     setIsLoading(true)
     
-    const { data: cats } = await supabase.from('categories').select('*').order('name')
-    setCategories((cats || []) as Category[])
-    
-    // Get listing counts for each category
-    if (cats) {
+    try {
+      const { data: cats, error } = await supabase.from('categories').select('*').order('name')
+      if (error) throw error
+      const categoryData = (cats || []) as Category[]
+      setCategories(categoryData)
+      
+      // Get listing counts for each category
       const counts: Record<string, number> = {}
-      for (const cat of cats) {
+      for (const cat of categoryData) {
         const { count } = await supabase
           .from('listings')
           .select('*', { count: 'exact', head: true })
@@ -58,6 +61,13 @@ export function CategoriesScreen() {
         counts[cat.id] = count || 0
       }
       setListingCounts(counts)
+    } catch (err) {
+      if (isMissingCategoryTableError(err)) {
+        setCategories(defaultCategories)
+        setListingCounts({})
+      } else {
+        console.error('Failed to load categories', err)
+      }
     }
     
     setIsLoading(false)

@@ -23,6 +23,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
+import { defaultCategories, isMissingCategoryTableError } from '@/lib/categories'
 import {
   Select,
   SelectContent,
@@ -63,8 +64,18 @@ export function CreateListing() {
   const [error, setError] = useState('')
 
   const fetchCategories = useCallback(async () => {
-    const { data } = await supabase.from('categories').select('*').order('name')
-    setCategories((data || []) as Category[])
+    try {
+      const { data, error } = await supabase.from('categories').select('*').order('name')
+      if (error) throw error
+      setCategories((data || []) as Category[])
+    } catch (err) {
+      if (isMissingCategoryTableError(err)) {
+        setCategories(defaultCategories)
+        return
+      }
+      console.error('Failed to load categories', err)
+      setCategories([])
+    }
   }, [supabase])
 
   useEffect(() => {
@@ -476,7 +487,7 @@ export function CreateListing() {
       </div>
 
       {/* Submit Button */}
-      <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 safe-area-bottom">
+      <div className="fixed bottom-24 left-0 right-0 z-50 bg-card border-t border-border p-4 safe-area-bottom">
         <div className="max-w-md mx-auto">
           <Button
             size="lg"
