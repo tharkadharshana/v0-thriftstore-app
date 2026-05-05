@@ -4,6 +4,7 @@ import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
 import { QueryProvider } from '@/components/providers/query-provider'
+import { AuthProvider } from '@/components/providers/auth-provider'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
@@ -51,12 +52,14 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <QueryProvider>
-            <LanguageProvider>
-              <main className="min-h-screen max-w-md mx-auto relative">
-                {children}
-              </main>
-              <Toaster position="top-center" />
-            </LanguageProvider>
+            <AuthProvider>
+              <LanguageProvider>
+                <main className="min-h-screen max-w-md mx-auto relative">
+                  {children}
+                </main>
+                <Toaster position="top-center" />
+              </LanguageProvider>
+            </AuthProvider>
           </QueryProvider>
         </ThemeProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
