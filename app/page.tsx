@@ -1,7 +1,5 @@
 import { ensureCategoriesSeeded } from '@/lib/actions'
-import dynamic from 'next/dynamic'
-
-const AppShell = dynamic(() => import('@/components/app-shell'), { ssr: false })
+import { AppShellWrapper } from '@/components/app-shell-wrapper'
 
 export default async function HomePage() {
   try {
@@ -10,5 +8,5 @@ export default async function HomePage() {
     console.warn('Could not seed categories:', error)
   }
 
-  return <AppShell />
+  return <AppShellWrapper />
 }
