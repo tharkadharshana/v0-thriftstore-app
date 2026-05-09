@@ -33,7 +33,7 @@ export function CurvedHeader({ onSearchFocus }: CurvedHeaderProps) {
   const { user, profile } = useAuth()
   const { language, setLanguage, t } = useLanguage()
   const supabase = createClient()
-  
+
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [showNotifications, setShowNotifications] = useState(false)
@@ -46,14 +46,14 @@ export function CurvedHeader({ onSearchFocus }: CurvedHeaderProps) {
 
   const fetchNotifications = useCallback(async () => {
     if (!user) return
-    
+
     const { data } = await supabase
       .from('notifications')
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(10)
-    
+
     setNotifications((data || []) as Notification[])
     setUnreadCount(data?.filter(n => !n.is_read).length || 0)
   }, [user, supabase])
@@ -64,13 +64,13 @@ export function CurvedHeader({ onSearchFocus }: CurvedHeaderProps) {
 
   const markAllRead = async () => {
     if (!user) return
-    
+
     await supabase
       .from('notifications')
       .update({ is_read: true })
       .eq('user_id', user.id)
       .eq('is_read', false)
-    
+
     setUnreadCount(0)
     setNotifications(notifications.map(n => ({ ...n, is_read: true })))
   }
@@ -82,11 +82,11 @@ export function CurvedHeader({ onSearchFocus }: CurvedHeaderProps) {
         .update({ is_read: true })
         .eq('id', notification.id)
     }
-    
+
     if (notification.listing_id) {
       navigate('listing', notification.listing_id)
     }
-    
+
     setShowNotifications(false)
   }
 
@@ -121,14 +121,20 @@ export function CurvedHeader({ onSearchFocus }: CurvedHeaderProps) {
     >
       {/* Top Row */}
       <div className="flex items-center justify-between mb-4">
-        {/* Logo */}
-        <div className="flex items-center gap-2">
+        {/* Logo — hide on desktop (sidebar has it) */}
+        <div className="flex items-center gap-2 md:hidden">
           <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center">
             <span className="text-accent-foreground font-bold text-lg">D</span>
           </div>
           <span className="text-primary-foreground font-bold text-xl tracking-tight">
             DuDu
           </span>
+        </div>
+
+        {/* Desktop: show page title */}
+        <div className="hidden md:block">
+          <h1 className="text-primary-foreground font-bold text-2xl">Marketplace</h1>
+          <p className="text-primary-foreground/60 text-sm">Find great deals near you</p>
         </div>
 
         {/* Right Actions */}
@@ -240,10 +246,7 @@ export function CurvedHeader({ onSearchFocus }: CurvedHeaderProps) {
       </div>
 
       {/* Search Bar */}
-      <div
-        onClick={onSearchFocus}
-        className="relative"
-      >
+      <div onClick={onSearchFocus} className="relative">
         <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md rounded-2xl px-4 py-3 cursor-pointer hover:bg-white/15 transition-colors">
           <Search className="w-5 h-5 text-primary-foreground/70" />
           <input

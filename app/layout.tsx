@@ -52,14 +52,14 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <QueryProvider>
-            <AuthProvider>
-              <LanguageProvider>
-                <main className="min-h-screen max-w-md mx-auto relative">
+            <LanguageProvider>
+              <AuthProvider>
+                <main className="min-h-screen">
                   {children}
                 </main>
                 <Toaster position="top-center" />
-              </LanguageProvider>
-            </AuthProvider>
+              </AuthProvider>
+            </LanguageProvider>
           </QueryProvider>
         </ThemeProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}

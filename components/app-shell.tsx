@@ -14,6 +14,7 @@ import { MyListingsScreen } from '@/components/my-listings-screen'
 import { NotificationsScreen } from '@/components/notifications-screen'
 import { ChatScreen } from '@/components/chat-screen'
 import { BottomNav } from '@/components/bottom-nav'
+import { DesktopSidebar } from '@/components/desktop-sidebar'
 import { Loader2 } from 'lucide-react'
 
 export function AppShell() {
@@ -56,14 +57,30 @@ export function AppShell() {
   }
 
   return (
-    <div className="relative">
-      {renderScreen()}
-      <BottomNav />
-      <AuthModal 
-        isOpen={showAuthModal} 
+    <>
+      {/* Mobile layout: max-w-md centered, bottom nav */}
+      <div className="md:hidden relative">
+        <div className="max-w-md mx-auto relative">
+          {renderScreen()}
+          <BottomNav />
+        </div>
+      </div>
+
+      {/* Desktop layout: sidebar + main */}
+      <div className="hidden md:flex min-h-screen bg-background">
+        <DesktopSidebar />
+        <main className="flex-1 min-w-0 overflow-y-auto">
+          <div className="max-w-5xl mx-auto">
+            {renderScreen()}
+          </div>
+        </main>
+      </div>
+
+      <AuthModal
+        isOpen={showAuthModal}
         onClose={closeAuthModal}
         mode={authModalMode}
       />
-    </div>
+    </>
   )
 }

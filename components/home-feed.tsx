@@ -29,7 +29,7 @@ export function HomeFeed() {
   const { activeCategory, setActiveCategory } = useAppStore()
   const { t } = useLanguage()
   const supabase = createClient()
-  
+
   const [listings, setListings] = useState<Listing[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -40,7 +40,7 @@ export function HomeFeed() {
 
   const fetchListings = useCallback(async () => {
     setIsLoading(true)
-    
+
     let query = supabase
       .from('listings')
       .select(`
@@ -50,26 +50,24 @@ export function HomeFeed() {
       `)
       .eq('is_active', true)
       .eq('is_sold', false)
-    
+
     if (activeCategory) {
       query = query.eq('category_id', activeCategory)
     }
-    
+
     if (listingType === 'buy_now') {
       query = query.eq('is_auction', false)
     } else if (listingType === 'auction') {
       query = query.eq('is_auction', true)
     }
-    
+
     if (selectedConditions.length > 0) {
       query = query.in('condition', selectedConditions)
     }
-    
+
     query = query.gte('price', priceRange[0]).lte('price', priceRange[1])
-    
-    // Sort by boosted first, then by selected sort
     query = query.order('is_boosted', { ascending: false })
-    
+
     if (sortBy === 'price_low') {
       query = query.order('price', { ascending: true })
     } else if (sortBy === 'price_high') {
@@ -79,32 +77,24 @@ export function HomeFeed() {
     } else {
       query = query.order('created_at', { ascending: false })
     }
-    
-    query = query.limit(50)
-    
-    const { data, error } = await query
-    
-    if (error) {
-      console.error('Failed to fetch listings', error)
-      setListings([])
-      setIsLoading(false)
-      return
-    }
 
-    // Check saved status
-    const { data: userData } = await supabase.auth.getUser()
-    if (userData.user && data) {
+    query = query.limit(50)
+
+    const { data } = await query
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user && data) {
       const { data: saved } = await supabase
         .from('saved_listings')
         .select('listing_id')
-        .eq('user_id', userData.user.id)
-      
+        .eq('user_id', user.id)
+
       const savedIds = new Set(saved?.map(s => s.listing_id) || [])
       setListings(data.map(l => ({ ...l, is_saved: savedIds.has(l.id) })) as Listing[])
     } else {
       setListings((data || []) as Listing[])
     }
-    
+
     setIsLoading(false)
   }, [supabase, activeCategory, listingType, selectedConditions, priceRange, sortBy])
 
@@ -132,7 +122,7 @@ export function HomeFeed() {
   const regularListings = listings.filter(l => l.boost_level !== 'ultra')
 
   return (
-    <div className="flex flex-col min-h-screen bg-background pb-24">
+    <div className="flex flex-col min-h-screen bg-background pb-24 md:pb-8">
       <CurvedHeader />
 
       {/* Category Pills */}
@@ -285,7 +275,7 @@ export function HomeFeed() {
               <ScrollArea className="w-full">
                 <div className="flex gap-3 pb-2">
                   {featuredListings.map((listing) => (
-                    <div key={listing.id} className="w-[200px] flex-shrink-0">
+                    <div key={listing.id} className="w-[200px] md:w-[240px] flex-shrink-0">
                       <ListingCard listing={listing} onUpdate={fetchListings} />
                     </div>
                   ))}
@@ -295,10 +285,10 @@ export function HomeFeed() {
             </div>
           )}
 
-          {/* Listings Grid */}
+          {/* Listings Grid — 2 cols mobile, 3 cols desktop */}
           <div className="flex-1 px-4 py-3">
             {regularListings.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {regularListings.map((listing) => (
                   <ListingCard key={listing.id} listing={listing} onUpdate={fetchListings} />
                 ))}
@@ -306,8 +296,8 @@ export function HomeFeed() {
             ) : (
               <div className="flex flex-col items-center justify-center py-20 text-center">
                 <p className="text-muted-foreground">No listings found</p>
-                <Button 
-                  variant="link" 
+                <Button
+                  variant="link"
                   className="text-accent"
                   onClick={() => {
                     setActiveCategory(null)

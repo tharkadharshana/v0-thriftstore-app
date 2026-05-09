@@ -31,7 +31,8 @@ export function BottomNav() {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-lg border-t border-border safe-area-bottom">
+    // md:hidden — desktop uses sidebar instead
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-lg border-t border-border safe-area-bottom">
       <div className="max-w-md mx-auto flex items-center justify-around px-2 py-2">
         {navItems.map((item) => {
           const isActive = currentScreen === item.id
